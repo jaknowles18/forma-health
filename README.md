@@ -11,14 +11,14 @@ Forma is a private, device-local health dashboard and food diary. It runs as a s
 
 ## Apple Health import rules
 
-V1 supports steps, sleep, resting heart rate, HRV, and weight. Raw Apple export records are processed in a Web Worker and are not uploaded or retained. The app saves daily summaries only.
+V1 supports steps, sleep, resting heart rate, HRV, and weight. Raw Apple export records are streamed through a Web Worker and are not uploaded or retained. The app saves daily summaries only.
 
 - Steps use the highest source total for each day to avoid adding overlapping Watch and iPhone totals. This may undercount when different sources cover different parts of a day.
 - Overlapping asleep intervals are merged. In-bed and awake records are excluded.
 - Resting heart rate, HRV, and weight use the latest record for the day.
 - A successful new import replaces earlier health summaries. Food records are untouched.
 
-ZIP files are limited to 120 MB and uncompressed XML to 400 MB. These bounds keep failure recoverable on mobile browsers; large histories may need a desktop browser or extracted XML.
+ZIP and XML content is read incrementally instead of loaded into memory as one giant string. Standard ZIP archives can be imported directly. If an exceptionally large archive uses ZIP64, extract and upload `export.xml`; direct XML also streams. The small ZIP directory is the only archive structure read into memory at once.
 
 ## Structure
 

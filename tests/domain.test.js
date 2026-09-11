@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { deflateRawSync } from "node:zlib";
 import { totalsForDate, validateBackup, validateFood } from "../dist/domain.js";
-import { parseHealthXml } from "../dist/import-worker.js";
+import { openHealthStream, parseHealthStream, parseHealthXml } from "../dist/import-worker.js";
 
 test("servings scale food totals exactly once", () => {
   const food = validateFood({ id: "a", date: "2026-09-11", meal: "Lunch", name: "Rice bowl", calories: 200, protein: 10, carbs: 30, fat: 5, servings: 1.5 });
@@ -27,3 +28,43 @@ test("Apple Health records become stable daily summaries", () => {
   assert.equal(result.records.find((item) => item.metric === "sleep").value, 4.5);
   assert.equal(result.records.find((item) => item.metric === "restingHeartRate").value, 54);
 });
+
+test("large XML path handles records split across stream chunks", async () => {
+  const xml = `<HealthData><Record type="HKQuantityTypeIdentifierStepCount" sourceName="Watch" unit="count" value="321" startDate="2026-09-11 09:00:00 -0400" endDate="2026-09-11 10:00:00 -0400"/></HealthData>`;
+  const bytes = new TextEncoder().encode(xml);
+  const stream = new ReadableStream({
+    start(controller) {
+      for (let i = 0; i < bytes.length; i += 11) controller.enqueue(bytes.slice(i, i + 11));
+      controller.close();
+    },
+  });
+  const result = await parseHealthStream(stream, bytes.length);
+  assert.equal(result.records[0].value, 321);
+  assert.equal(result.summary.days, 1);
+});
+
+test("standard ZIP export streams without loading the whole archive", async () => {
+  const xml = `<HealthData><Record type="HKQuantityTypeIdentifierStepCount" sourceName="Watch" unit="count" value="456" startDate="2026-09-11 09:00:00 -0400" endDate="2026-09-11 10:00:00 -0400"/></HealthData>`;
+  const zip = makeZip("apple_health_export/export.xml", Buffer.from(xml));
+  const file = new Blob([zip]);
+  Object.defineProperty(file, "name", { value: "export.zip" });
+  const input = await openHealthStream(file);
+  const result = await parseHealthStream(input.stream, input.uncompressedSize);
+  assert.equal(result.records[0].value, 456);
+});
+
+function makeZip(filename, content) {
+  const name = Buffer.from(filename);
+  const compressed = deflateRawSync(content);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(compressed.length, 18); local.writeUInt32LE(content.length, 22); local.writeUInt16LE(name.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(compressed.length, 20); central.writeUInt32LE(content.length, 24); central.writeUInt16LE(name.length, 28);
+  const directoryOffset = local.length + name.length + compressed.length;
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(1, 8); eocd.writeUInt16LE(1, 10);
+  eocd.writeUInt32LE(central.length + name.length, 12); eocd.writeUInt32LE(directoryOffset, 16);
+  return Buffer.concat([local, name, compressed, central, name, eocd]);
+}

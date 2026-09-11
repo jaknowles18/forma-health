@@ -79,7 +79,7 @@
         <button class="dialog-close" type="button" data-close="importDialog" aria-label="Close">×</button>
         <div><p class="eyebrow">Apple Health</p><h2>Import your export</h2></div>
         <p class="muted compact">On your iPhone, open Health → tap your profile → Export All Health Data. Choose the ZIP here. You can also upload the extracted export.xml.</p>
-        <label class="drop-zone" id="dropZone"><span>Choose Health ZIP or XML</span><small>Processed only in this browser · up to 120 MB ZIP</small><input id="healthFile" type="file" accept=".zip,.xml,application/zip,text/xml" /></label>
+        <label class="drop-zone" id="dropZone"><span>Choose Health ZIP or XML</span><small>Large exports stream in small pieces · processed only in this browser</small><input id="healthFile" type="file" accept=".zip,.xml,application/zip,text/xml" /></label>
         <div class="import-progress hidden" id="importProgress"><div><span id="importStage">Reading export</span><b id="importPercent">0%</b></div><progress id="importBar" max="100" value="0"></progress><button class="text-button" id="cancelImport" type="button">Cancel import</button></div>
         <div class="import-result hidden" id="importResult" role="status"></div>
         <p class="form-error" id="importError" role="alert"></p>
