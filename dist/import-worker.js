@@ -5,8 +5,16 @@ const TYPES = {
   HKQuantityTypeIdentifierRestingHeartRate: "restingHeartRate",
   HKQuantityTypeIdentifierHeartRateVariabilitySDNN: "hrv",
   HKQuantityTypeIdentifierBodyMass: "weight",
+  HKQuantityTypeIdentifierRespiratoryRate: "respiratoryRate",
+  HKQuantityTypeIdentifierOxygenSaturation: "oxygenSaturation",
+  HKQuantityTypeIdentifierActiveEnergyBurned: "activeEnergy",
+  HKQuantityTypeIdentifierAppleExerciseTime: "exercise",
+  HKQuantityTypeIdentifierDistanceWalkingRunning: "distance",
+  HKQuantityTypeIdentifierVO2Max: "vo2Max",
   HKCategoryTypeIdentifierSleepAnalysis: "sleep",
 };
+
+const CUMULATIVE_METRICS = new Set(["steps", "activeEnergy", "exercise", "distance"]);
 
 const send = typeof postMessage === "function" ? postMessage : () => {};
 
@@ -17,7 +25,7 @@ if (typeof self !== "undefined") self.onmessage = async (event) => {
     send({ type: "progress", stage: "Opening export", progress: 2 });
     const input = await openHealthStream(file);
     const result = await parseHealthStream(input.stream, input.uncompressedSize);
-    if (!result.records.length) throw new Error("No supported records were found. Forma supports steps, sleep, resting heart rate, HRV, and weight.");
+    if (!result.records.length) throw new Error("No supported Apple Health metrics were found in this export.");
     send({ type: "done", ...result });
   } catch (error) {
     send({ type: "error", message: error?.message || "The Apple Health export could not be imported." });
@@ -151,7 +159,7 @@ function parseDate(value) {
 }
 
 function createAccumulator() {
-  return { steps: new Map(), sleep: new Map(), values: new Map(), counts: { steps: 0, sleep: 0, restingHeartRate: 0, hrv: 0, weight: 0 }, supportedTotal: 0 };
+  return { cumulative: new Map(), sleep: new Map(), values: new Map(), counts: { steps: 0, sleep: 0, restingHeartRate: 0, hrv: 0, weight: 0, respiratoryRate: 0, oxygenSaturation: 0, activeEnergy: 0, exercise: 0, distance: 0, vo2Max: 0 }, supportedTotal: 0 };
 }
 
 function consumeRecord(a, accumulator) {
@@ -172,34 +180,36 @@ function consumeRecord(a, accumulator) {
     accumulator.sleep.get(date).push([start.getTime(), end.getTime(), source]);
     return;
   }
-  if (metric === "steps") {
-    const value = Number(a.value);
+  if (CUMULATIVE_METRICS.has(metric)) {
+    let value = Number(a.value);
     if (!Number.isFinite(value) || value < 0) return;
-    const key = `${date}|${source}`;
-    accumulator.steps.set(key, (accumulator.steps.get(key) || 0) + value);
+    let unit = a.unit || defaultUnit(metric);
+    ({ value, unit } = normalizeValue(metric, value, unit));
+    const key = `${metric}|${date}|${source}`;
+    const current = accumulator.cumulative.get(key);
+    accumulator.cumulative.set(key, { value: (current?.value || 0) + value, unit });
     return;
   }
 
   let value = Number(a.value);
   if (!Number.isFinite(value) || value < 0) return;
-  let unit = a.unit || "";
-  if (metric === "weight" && unit === "lb") { value *= 0.45359237; unit = "kg"; }
-  if (metric === "weight" && unit === "g") { value /= 1000; unit = "kg"; }
+  let unit = a.unit || defaultUnit(metric);
+  ({ value, unit } = normalizeValue(metric, value, unit));
   const key = `${date}:${metric}`;
   const current = accumulator.values.get(key);
-  if (!current || end > current.end) accumulator.values.set(key, { id: key, date, metric, value, unit: metric === "weight" ? "kg" : unit, source, measuredAt: end.toISOString(), end });
+  if (!current || end > current.end) accumulator.values.set(key, { id: key, date, metric, value, unit, source, measuredAt: end.toISOString(), end });
 }
 
 function finalizeAccumulator(accumulator) {
   const records = [...accumulator.values.values()].map(({ end, ...record }) => record);
-  const bestSteps = new Map();
-  for (const [key, value] of accumulator.steps) {
-    const divider = key.indexOf("|");
-    const date = key.slice(0, divider);
-    const source = key.slice(divider + 1);
-    if (!bestSteps.has(date) || value > bestSteps.get(date).value) bestSteps.set(date, { value, source });
+  const bestCumulative = new Map();
+  for (const [key, item] of accumulator.cumulative) {
+    const [metric, date, ...sourceParts] = key.split("|");
+    const source = sourceParts.join("|");
+    const dailyKey = `${date}:${metric}`;
+    if (!bestCumulative.has(dailyKey) || item.value > bestCumulative.get(dailyKey).value) bestCumulative.set(dailyKey, { ...item, metric, date, source });
   }
-  for (const [date, item] of bestSteps) records.push({ id: `${date}:steps`, date, metric: "steps", value: Math.round(item.value), unit: "count", source: item.source, measuredAt: `${date}T23:59:59`, note: "Highest daily source total; avoids adding overlapping iPhone and Watch counts." });
+  for (const [id, item] of bestCumulative) records.push({ id, date: item.date, metric: item.metric, value: item.metric === "steps" ? Math.round(item.value) : item.value, unit: item.unit, source: item.source, measuredAt: `${item.date}T23:59:59`, note: "Highest daily source total; avoids adding overlapping device totals." });
 
   for (const [date, intervals] of accumulator.sleep) {
     if (!intervals.length) continue;
@@ -218,6 +228,20 @@ function finalizeAccumulator(accumulator) {
 
   records.sort((a, b) => a.date.localeCompare(b.date) || a.metric.localeCompare(b.metric));
   return { records, summary: { days: new Set(records.map((record) => record.date)).size, records: records.length, sourceRecords: accumulator.supportedTotal, counts: accumulator.counts } };
+}
+
+function defaultUnit(metric) {
+  return ({ steps: "count", sleep: "hr", restingHeartRate: "count/min", hrv: "ms", weight: "kg", respiratoryRate: "count/min", oxygenSaturation: "%", activeEnergy: "kcal", exercise: "min", distance: "km", vo2Max: "mL/kg/min" })[metric] || "";
+}
+
+function normalizeValue(metric, value, unit) {
+  if (metric === "weight" && unit === "lb") return { value: value * 0.45359237, unit: "kg" };
+  if (metric === "weight" && unit === "g") return { value: value / 1000, unit: "kg" };
+  if (metric === "distance" && unit === "mi") return { value: value * 1.609344, unit: "km" };
+  if (metric === "distance" && unit === "m") return { value: value / 1000, unit: "km" };
+  if (metric === "activeEnergy" && unit === "kJ") return { value: value / 4.184, unit: "kcal" };
+  if (metric === "oxygenSaturation" && value <= 1) return { value: value * 100, unit: "%" };
+  return { value, unit: defaultUnit(metric) || unit };
 }
 
 function formatBytes(bytes) {

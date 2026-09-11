@@ -1,5 +1,6 @@
 export const MEALS = ["Breakfast", "Lunch", "Dinner", "Snacks"];
 export const DEFAULT_TARGETS = { calories: 2200, protein: 140, carbs: 260, fat: 65 };
+export const HEALTH_METRIC_KEYS = ["steps", "sleep", "restingHeartRate", "hrv", "weight", "respiratoryRate", "oxygenSaturation", "activeEnergy", "exercise", "distance", "vo2Max"];
 
 export function localDay(date = new Date()) {
   const y = date.getFullYear();
@@ -57,7 +58,7 @@ export function validateBackup(data) {
   const foods = data.foods.map(validateFood);
   const targets = validateTargets(data.targets);
   const health = data.health.map((item) => {
-    if (!item || !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || !["steps", "sleep", "restingHeartRate", "hrv", "weight"].includes(item.metric)) {
+    if (!item || !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || !HEALTH_METRIC_KEYS.includes(item.metric)) {
       throw new Error("The backup contains an invalid health record.");
     }
     const value = Number(item.value);
@@ -65,4 +66,35 @@ export function validateBackup(data) {
     return { ...item, id: `${item.date}:${item.metric}`, value };
   });
   return { schemaVersion: 1, exportedAt: String(data.exportedAt || ""), foods, health, targets, importMeta: data.importMeta || null };
+}
+
+function shiftDay(day, offset) {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+export function trendForMetric(health, metric, endDate, days) {
+  if (!HEALTH_METRIC_KEYS.includes(metric) || !Number.isInteger(days) || days < 2 || days > 365) throw new Error("Invalid trend request.");
+  const currentStart = shiftDay(endDate, -(days - 1));
+  const previousStart = shiftDay(currentStart, -days);
+  const previousEnd = shiftDay(currentStart, -1);
+  const current = health.filter((item) => item.metric === metric && item.date >= currentStart && item.date <= endDate).sort((a, b) => a.date.localeCompare(b.date));
+  const previous = health.filter((item) => item.metric === metric && item.date >= previousStart && item.date <= previousEnd);
+  const average = (items) => items.length ? items.reduce((sum, item) => sum + Number(item.value), 0) / items.length : null;
+  const currentAverage = average(current);
+  const previousAverage = average(previous);
+  const changePercent = currentAverage !== null && previousAverage ? ((currentAverage - previousAverage) / previousAverage) * 100 : null;
+  return {
+    points: current,
+    latest: current.at(-1) || null,
+    average: currentAverage,
+    previousAverage,
+    changePercent,
+    minimum: current.length ? Math.min(...current.map((item) => Number(item.value))) : null,
+    maximum: current.length ? Math.max(...current.map((item) => Number(item.value))) : null,
+    daysWithData: current.length,
+    startDate: currentStart,
+    endDate,
+  };
 }

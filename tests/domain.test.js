@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
-import { totalsForDate, validateBackup, validateFood } from "../dist/domain.js";
+import { totalsForDate, trendForMetric, validateBackup, validateFood } from "../dist/domain.js";
 import { openHealthStream, parseHealthStream, parseHealthXml } from "../dist/import-worker.js";
 
 test("servings scale food totals exactly once", () => {
@@ -20,6 +20,8 @@ test("Apple Health records become stable daily summaries", () => {
     <Record type="HKQuantityTypeIdentifierStepCount" sourceName="iPhone" unit="count" value="1000" startDate="2026-09-11 09:00:00 -0400" endDate="2026-09-11 10:00:00 -0400"/>
     <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Watch" unit="count" value="1800" startDate="2026-09-11 09:00:00 -0400" endDate="2026-09-11 10:00:00 -0400"/>
     <Record type="HKQuantityTypeIdentifierRestingHeartRate" sourceName="Watch" unit="count/min" value="54" startDate="2026-09-11 08:00:00 -0400" endDate="2026-09-11 08:01:00 -0400"/>
+    <Record type="HKQuantityTypeIdentifierOxygenSaturation" sourceName="Watch" unit="%" value="0.98" startDate="2026-09-11 08:00:00 -0400" endDate="2026-09-11 08:01:00 -0400"/>
+    <Record type="HKQuantityTypeIdentifierActiveEnergyBurned" sourceName="Watch" unit="kJ" value="418.4" startDate="2026-09-11 09:00:00 -0400" endDate="2026-09-11 10:00:00 -0400"/>
     <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Watch" value="HKCategoryValueSleepAnalysisAsleepCore" startDate="2026-09-10 23:00:00 -0400" endDate="2026-09-11 02:00:00 -0400"/>
     <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Watch" value="HKCategoryValueSleepAnalysisAsleepDeep" startDate="2026-09-11 01:30:00 -0400" endDate="2026-09-11 03:30:00 -0400"/>
   </HealthData>`;
@@ -27,6 +29,20 @@ test("Apple Health records become stable daily summaries", () => {
   assert.equal(result.records.find((item) => item.metric === "steps").value, 1800);
   assert.equal(result.records.find((item) => item.metric === "sleep").value, 4.5);
   assert.equal(result.records.find((item) => item.metric === "restingHeartRate").value, 54);
+  assert.equal(result.records.find((item) => item.metric === "oxygenSaturation").value, 98);
+  assert.ok(Math.abs(result.records.find((item) => item.metric === "activeEnergy").value - 100) < 0.000001);
+});
+
+test("trend summaries compare equal current and previous periods", () => {
+  const health = [];
+  for (let day = 1; day <= 14; day++) health.push({ date: `2026-09-${String(day).padStart(2, "0")}`, metric: "hrv", value: day <= 7 ? 40 : 50 });
+  const trend = trendForMetric(health, "hrv", "2026-09-14", 7);
+  assert.equal(trend.startDate, "2026-09-08");
+  assert.equal(trend.daysWithData, 7);
+  assert.equal(trend.average, 50);
+  assert.equal(trend.previousAverage, 40);
+  assert.equal(trend.changePercent, 25);
+  assert.equal(trend.latest.date, "2026-09-14");
 });
 
 test("large XML path handles records split across stream chunks", async () => {

@@ -14,6 +14,7 @@
         <a class="brand" href="#today" aria-label="Forma home"><span class="brand-mark">F</span><span>Forma</span></a>
         <nav class="desktop-nav" aria-label="Primary">
           <button class="nav-link active" data-view="today">Today</button>
+          <button class="nav-link" data-view="trends">Trends</button>
           <button class="nav-link" data-view="food">Food</button>
           <button class="nav-link" data-view="settings">Settings</button>
         </nav>
@@ -51,12 +52,23 @@
             <button class="primary-button" id="quickAdd">＋ Add food</button>
           </section>
         </section>
+        <section class="view" id="trendsView" aria-labelledby="trendsTitle">
+          <div class="page-head trends-head">
+            <div><p class="eyebrow">Health history</p><h1 id="trendsTitle">Trends</h1></div>
+            <div class="range-control" role="group" aria-label="Trend range"><button data-range="7">7D</button><button class="active" data-range="30">30D</button><button data-range="90">90D</button></div>
+          </div>
+          <div class="trend-metric-tabs" id="trendMetricTabs" role="tablist" aria-label="Health metric"></div>
+          <section class="trend-hero" id="trendHero" aria-live="polite"></section>
+          <div class="section-heading trend-section-heading"><div><p class="eyebrow">At a glance</p><h2>All metrics</h2></div><span class="muted" id="trendRangeLabel"></span></div>
+          <div class="trend-card-grid" id="trendCards"></div>
+        </section>
         <section class="view" id="foodView" aria-labelledby="foodTitle"><div class="page-head"><div><p class="eyebrow">Nutrition</p><h1 id="foodTitle">Food diary</h1></div><button class="primary-button" id="addFood">＋ Add food</button></div><div class="day-switcher"><button id="previousDay" aria-label="Previous day">←</button><strong id="foodDateLabel"></strong><button id="nextDay" aria-label="Next day">→</button></div><div id="mealGroups"></div></section>
         <section class="view" id="settingsView" aria-labelledby="settingsTitle"><div class="page-head"><div><p class="eyebrow">Preferences</p><h1 id="settingsTitle">Settings</h1></div></div><div id="settingsContent"></div></section>
       </main>
 
       <nav class="mobile-nav" aria-label="Primary">
         <button class="mobile-nav-link active" data-view="today"><span>◫</span>Today</button>
+        <button class="mobile-nav-link" data-view="trends"><span>⌁</span>Trends</button>
         <button class="mobile-nav-link" data-view="food"><span>⌁</span>Food</button>
         <button class="mobile-nav-link" data-view="settings"><span>⚙</span>Settings</button>
       </nav>
