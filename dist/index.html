@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0d0d" />
+    <meta name="description" content="A private personal health dashboard and food diary." />
+    <title>Forma</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#today" aria-label="Forma home"><span class="brand-mark">F</span><span>Forma</span></a>
+        <nav class="desktop-nav" aria-label="Primary">
+          <button class="nav-link active" data-view="today">Today</button>
+          <button class="nav-link" data-view="food">Food</button>
+          <button class="nav-link" data-view="settings">Settings</button>
+        </nav>
+        <button class="icon-button" id="settingsShortcut" aria-label="Open settings">⚙</button>
+      </header>
+
+      <main id="app" tabindex="-1">
+        <section class="view active" id="todayView" aria-labelledby="todayTitle">
+          <div class="page-head">
+            <div><p class="eyebrow" id="todayDate"></p><h1 id="todayTitle">Today</h1></div>
+            <button class="date-button" id="dateButton" aria-label="Choose date"><span id="shortDate"></span><span aria-hidden="true">⌄</span></button>
+            <input class="visually-hidden" id="datePicker" type="date" />
+          </div>
+
+          <section class="energy-card" aria-labelledby="energyTitle">
+            <div class="energy-copy"><p class="eyebrow" id="energyTitle">Daily energy</p><p class="energy-number"><span id="calorieTotal">0</span><small>kcal</small></p><p class="muted"><span id="calorieRemaining">2,200</span> remaining</p></div>
+            <div class="energy-ring" id="energyRing" role="img" aria-label="0 percent of calorie target"><span>0%</span></div>
+            <div class="macro-grid">
+              <div><span>Protein</span><strong><b id="proteinTotal">0</b> / 140g</strong><i style="--progress:0%;--tone:#7aa9ff"></i></div>
+              <div><span>Carbs</span><strong><b id="carbsTotal">0</b> / 260g</strong><i style="--progress:0%;--tone:#c9ff62"></i></div>
+              <div><span>Fat</span><strong><b id="fatTotal">0</b> / 65g</strong><i style="--progress:0%;--tone:#ffb86b"></i></div>
+            </div>
+          </section>
+
+          <div class="section-heading"><div><p class="eyebrow">Apple Health</p><h2>Your signals</h2></div><button class="secondary-button" id="openImport">Import data</button></div>
+          <div class="metric-grid" id="metricGrid">
+            <article class="metric-card accent-lime"><span class="metric-icon">↟</span><p>Steps</p><strong>—</strong><small>No imported data</small></article>
+            <article class="metric-card accent-blue"><span class="metric-icon">☾</span><p>Sleep</p><strong>—</strong><small>No imported data</small></article>
+            <article class="metric-card accent-red"><span class="metric-icon">♥</span><p>Resting heart rate</p><strong>—</strong><small>No imported data</small></article>
+            <article class="metric-card accent-purple"><span class="metric-icon">〰</span><p>HRV</p><strong>—</strong><small>No imported data</small></article>
+          </div>
+
+          <section class="empty-meals" id="todayMeals">
+            <div><p class="eyebrow">Food log</p><h2>Nothing logged yet</h2><p class="muted">Add your first meal to start today's totals.</p></div>
+            <button class="primary-button" id="quickAdd">＋ Add food</button>
+          </section>
+        </section>
+        <section class="view" id="foodView" aria-labelledby="foodTitle"><div class="page-head"><div><p class="eyebrow">Nutrition</p><h1 id="foodTitle">Food diary</h1></div><button class="primary-button" id="addFood">＋ Add food</button></div><div class="day-switcher"><button id="previousDay" aria-label="Previous day">←</button><strong id="foodDateLabel"></strong><button id="nextDay" aria-label="Next day">→</button></div><div id="mealGroups"></div></section>
+        <section class="view" id="settingsView" aria-labelledby="settingsTitle"><div class="page-head"><div><p class="eyebrow">Preferences</p><h1 id="settingsTitle">Settings</h1></div></div><div id="settingsContent"></div></section>
+      </main>
+
+      <nav class="mobile-nav" aria-label="Primary">
+        <button class="mobile-nav-link active" data-view="today"><span>◫</span>Today</button>
+        <button class="mobile-nav-link" data-view="food"><span>⌁</span>Food</button>
+        <button class="mobile-nav-link" data-view="settings"><span>⚙</span>Settings</button>
+      </nav>
+    </div>
+    <dialog id="foodDialog">
+      <form class="dialog-card form-stack" id="foodForm">
+        <button class="dialog-close" type="button" data-close="foodDialog" aria-label="Close">×</button>
+        <div><p class="eyebrow">Food entry</p><h2 id="foodDialogTitle">Add food</h2></div>
+        <input type="hidden" name="id" />
+        <div class="field-grid two"><label>Food name<input name="name" required maxlength="100" autocomplete="off" placeholder="e.g. Chicken rice bowl" /></label><label>Meal<select name="meal"><option>Breakfast</option><option>Lunch</option><option>Dinner</option><option>Snacks</option></select></label></div>
+        <label>Date<input name="date" type="date" required /></label>
+        <fieldset><legend>Nutrition per serving</legend><div class="field-grid two"><label>Calories<input name="calories" type="number" inputmode="decimal" min="0" max="10000" step="0.1" required /></label><label>Servings eaten<input name="servings" type="number" inputmode="decimal" min="0.01" max="100" step="0.01" value="1" required /></label><label>Protein (g)<input name="protein" type="number" inputmode="decimal" min="0" max="10000" step="0.1" required /></label><label>Carbs (g)<input name="carbs" type="number" inputmode="decimal" min="0" max="10000" step="0.1" required /></label><label>Fat (g)<input name="fat" type="number" inputmode="decimal" min="0" max="10000" step="0.1" required /></label></div></fieldset>
+        <label>Notes <span class="optional">Optional</span><textarea name="notes" maxlength="500" rows="2" placeholder="Portion or ingredient notes"></textarea></label>
+        <p class="form-error" id="foodError" role="alert"></p>
+        <div class="dialog-actions"><button class="danger-button hidden" id="deleteFood" type="button">Delete</button><span></span><button class="secondary-button" type="button" data-close="foodDialog">Cancel</button><button class="primary-button" type="submit">Save food</button></div>
+      </form>
+    </dialog>
+    <dialog id="importDialog">
+      <form class="dialog-card form-stack" id="healthImportForm">
+        <button class="dialog-close" type="button" data-close="importDialog" aria-label="Close">×</button>
+        <div><p class="eyebrow">Apple Health</p><h2>Import your export</h2></div>
+        <p class="muted compact">On your iPhone, open Health → tap your profile → Export All Health Data. Choose the ZIP here. You can also upload the extracted export.xml.</p>
+        <label class="drop-zone" id="dropZone"><span>Choose Health ZIP or XML</span><small>Processed only in this browser · up to 120 MB ZIP</small><input id="healthFile" type="file" accept=".zip,.xml,application/zip,text/xml" /></label>
+        <div class="import-progress hidden" id="importProgress"><div><span id="importStage">Reading export</span><b id="importPercent">0%</b></div><progress id="importBar" max="100" value="0"></progress><button class="text-button" id="cancelImport" type="button">Cancel import</button></div>
+        <div class="import-result hidden" id="importResult" role="status"></div>
+        <p class="form-error" id="importError" role="alert"></p>
+        <div class="privacy-note"><span aria-hidden="true">⌁</span><p><strong>Your raw export stays on this device.</strong><br />Forma saves only the supported daily summaries in your browser.</p></div>
+      </form>
+    </dialog>
+    <dialog id="restoreDialog"><form class="dialog-card form-stack" id="restoreForm"><button class="dialog-close" type="button" data-close="restoreDialog" aria-label="Close">×</button><div><p class="eyebrow">Restore</p><h2>Replace local data?</h2></div><p class="muted compact">This valid backup will replace the current food diary, health summaries, and targets on this device. Export a backup first if you need the current data.</p><p class="form-error" id="restoreError" role="alert"></p><div class="dialog-actions"><span></span><button class="secondary-button" type="button" data-close="restoreDialog">Cancel</button><button class="primary-button" type="submit">Replace data</button></div></form></dialog>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
