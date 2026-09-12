@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/**/*.py": {
+      "excludeFiles": "{dist/**,tests/**,docs/**,.git/**}"
+    }
+  }
+}

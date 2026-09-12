@@ -1,6 +1,10 @@
 .DS_Store
 node_modules/
 coverage/
+__pycache__/
+*.py[cod]
+.venv/
+.vercel/
 *.log
 *.tar.gz
 

@@ -1,0 +1,6 @@
+[project]
+name = "forma-health-backend"
+version = "0.1.0"
+description = "Stateless personal-readiness model for Forma"
+requires-python = ">=3.12"
+dependencies = []

@@ -1,11 +1,11 @@
 import { DEFAULT_TARGETS, MEALS, localDay, totalsForDate, trendForMetric, validateCheckin, validateFood, validateTargets, validateBackup } from "./domain.js";
-import { MIN_TRAINING_ROWS, readinessForDate, unusualSignals } from "./insights.js";
+import { fetchReadinessInsights, MIN_TRAINING_ROWS } from "./insights.js";
 import { storage } from "./storage.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
-const state = { date: localDay(), view: "today", trendMetric: "hrv", trendRange: 30, foods: [], health: [], checkins: [], targets: { ...DEFAULT_TARGETS }, importMeta: null, restoreData: null, worker: null };
+const state = { date: localDay(), view: "today", trendMetric: "hrv", trendRange: 30, foods: [], health: [], checkins: [], targets: { ...DEFAULT_TARGETS }, importMeta: null, restoreData: null, worker: null, insightsRequest: { key: "", status: "idle", data: null, error: "" } };
 
 function showView(view) {
   state.view = view;
@@ -132,13 +132,48 @@ function signalStatus(signal) {
   return { label: "Within usual range", className: "usual" };
 }
 
+function insightsKey() {
+  const checkinRevision = state.checkins.map((item) => `${item.date}:${item.updatedAt}`).sort().join("|");
+  return `${state.date}:${state.health.length}:${state.importMeta?.importedAt || "none"}:${checkinRevision}`;
+}
+
+function requestInsights(key) {
+  state.insightsRequest = { key, status: "loading", data: null, error: "" };
+  fetchReadinessInsights(state.health, state.checkins, state.date).then((data) => {
+    if (state.insightsRequest.key !== key) return;
+    state.insightsRequest = { key, status: "ready", data, error: "" };
+    if (state.view === "insights") renderInsights();
+  }).catch((error) => {
+    if (state.insightsRequest.key !== key) return;
+    state.insightsRequest = { key, status: "error", data: null, error: error.message };
+    if (state.view === "insights") renderInsights();
+  });
+}
+
 function renderInsights() {
-  const result = readinessForDate(state.health, state.checkins, state.date);
   const saved = state.checkins.find((item) => item.date === state.date);
   const form = $("#checkinForm");
   form.elements.date.value = state.date;
   form.elements.date.max = localDay();
   for (const key of ["energy", "soreness", "mood", "recovery", "notes"]) form.elements[key].value = saved?.[key] ?? "";
+
+  const key = insightsKey();
+  if (state.insightsRequest.key !== key) requestInsights(key);
+  if (state.insightsRequest.status === "loading") {
+    $("#readinessHero").innerHTML = `<div class="readiness-copy"><p class="eyebrow">Python readiness model</p><h2>Calculating your model</h2><p class="muted">Forma is building leakage-safe baselines and evaluating the latest model.</p></div><div class="readiness-lock loading-mark" aria-hidden="true">···</div>`;
+    $("#signalList").innerHTML = `<div class="insight-empty"><strong>Building baselines</strong><p class="muted compact">Only compact daily summaries are sent to the Python function.</p></div>`;
+    $("#modelDetails").innerHTML = `<p class="muted">Waiting for the Python model report.</p>`;
+    return;
+  }
+  if (state.insightsRequest.status === "error") {
+    $("#readinessHero").innerHTML = `<div class="readiness-copy"><p class="eyebrow">Python readiness model</p><h2>Model unavailable</h2><p class="muted">${escapeHtml(state.insightsRequest.error)}</p><button class="secondary-button" id="retryInsights">Try again</button></div>`;
+    $("#signalList").innerHTML = `<div class="insight-empty"><strong>Python API required</strong><p class="muted compact">Run the complete app with Vercel rather than a static-only server.</p></div>`;
+    $("#modelDetails").innerHTML = `<p class="muted">Your health data and check-ins are still stored safely in this browser.</p>`;
+    $("#retryInsights").addEventListener("click", () => { state.insightsRequest.key = ""; renderInsights(); });
+    return;
+  }
+
+  const result = state.insightsRequest.data;
 
   if (result.prediction === null) {
     const progress = Math.min(100, Math.round((result.rows / MIN_TRAINING_ROWS) * 100));
@@ -149,10 +184,10 @@ function renderInsights() {
   } else {
     const strongest = result.contributions[0];
     const explanation = strongest.effect >= 0 ? `${strongest.label} is lifting the estimate` : `${strongest.label} is lowering the estimate`;
-    $("#readinessHero").innerHTML = `<div class="readiness-copy"><p class="eyebrow">Predicted readiness</p><h2>${escapeHtml(explanation)}</h2><p class="muted">Based on ${result.rows} of your check-ins and today's measurements. This is an experiment, not medical guidance.</p><span class="confidence-pill">${result.confidence} model confidence</span></div><div class="readiness-score" style="--score:${result.score * 3.6}deg" role="img" aria-label="Predicted readiness ${result.score} out of 100"><strong>${result.score}</strong><small>/ 100</small></div>`;
+    $("#readinessHero").innerHTML = `<div class="readiness-copy"><p class="eyebrow">Predicted readiness</p><h2>${escapeHtml(explanation)}</h2><p class="muted">Based on ${result.rows} of your check-ins and the selected day's measurements. This is an experiment, not medical guidance.</p><span class="confidence-pill">${result.confidence} model confidence</span></div><div class="readiness-score" style="--score:${result.score * 3.6}deg" role="img" aria-label="Predicted readiness ${result.score} out of 100"><strong>${result.score}</strong><small>/ 100</small></div>`;
   }
 
-  const signals = unusualSignals(state.health, state.date);
+  const signals = result.signals;
   $("#signalList").innerHTML = signals.length ? signals.map((signal) => {
     const metric = METRICS.find((item) => item.key === signal.metric);
     const status = signalStatus(signal);
@@ -161,7 +196,7 @@ function renderInsights() {
   }).join("") : `<div class="insight-empty"><strong>No measurements for this day</strong><p class="muted compact">Choose a date with imported Apple Health data.</p></div>`;
 
   if (!result.ready) {
-    $("#modelDetails").innerHTML = `<p class="muted">The model needs ${MIN_TRAINING_ROWS} check-ins with matching HRV, resting heart rate, sleep, and at least seven earlier baseline days.</p><dl class="model-facts"><div><dt>Usable labels</dt><dd>${result.rows}</dd></div><div><dt>Saved check-ins</dt><dd>${state.checkins.length}</dd></div><div><dt>Method</dt><dd>Ridge regression</dd></div></dl>`;
+    $("#modelDetails").innerHTML = `<p class="muted">The model needs ${MIN_TRAINING_ROWS} check-ins with matching HRV, resting heart rate, sleep, and at least seven earlier baseline days.</p><dl class="model-facts"><div><dt>Usable labels</dt><dd>${result.rows}</dd></div><div><dt>Saved check-ins</dt><dd>${state.checkins.length}</dd></div><div><dt>Method</dt><dd>Python ridge regression</dd></div></dl>`;
   } else {
     const comparison = result.evaluation.mae < result.evaluation.baselineMae ? "Beating the simple average" : "Not yet beating the simple average";
     const factors = result.contributions ? `<div class="factor-list">${result.contributions.map((item) => `<div><span>${item.label}</span><b class="${item.effect >= 0 ? "positive" : "negative"}">${item.effect >= 0 ? "+" : ""}${number.format(item.effect)}</b></div>`).join("")}</div>` : "";
