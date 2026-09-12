@@ -1,10 +1,11 @@
-import { DEFAULT_TARGETS, MEALS, localDay, totalsForDate, trendForMetric, validateFood, validateTargets, validateBackup } from "./domain.js";
+import { DEFAULT_TARGETS, MEALS, localDay, totalsForDate, trendForMetric, validateCheckin, validateFood, validateTargets, validateBackup } from "./domain.js";
+import { MIN_TRAINING_ROWS, readinessForDate, unusualSignals } from "./insights.js";
 import { storage } from "./storage.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
-const state = { date: localDay(), view: "today", trendMetric: "hrv", trendRange: 30, foods: [], health: [], targets: { ...DEFAULT_TARGETS }, importMeta: null, restoreData: null, worker: null };
+const state = { date: localDay(), view: "today", trendMetric: "hrv", trendRange: 30, foods: [], health: [], checkins: [], targets: { ...DEFAULT_TARGETS }, importMeta: null, restoreData: null, worker: null };
 
 function showView(view) {
   state.view = view;
@@ -24,6 +25,7 @@ function renderDate() {
   $("#datePicker").value = state.date;
   $("#datePicker").max = localDay();
   $("#foodDateLabel").textContent = state.date === localDay() ? "Today" : displayDate(state.date, { weekday: "short", month: "short", day: "numeric" });
+  $("#insightsDate").textContent = displayDate(state.date, { weekday: "long", month: "long", day: "numeric" });
   $("#nextDay").disabled = state.date >= localDay();
 }
 
@@ -123,6 +125,50 @@ function renderTrends() {
   $$('[data-trend-metric]').forEach((button) => button.addEventListener("click", () => { state.trendMetric = button.dataset.trendMetric; renderTrends(); }));
 }
 
+function signalStatus(signal) {
+  if (signal.zScore === null) return { label: `${signal.samples}/${signal.requiredSamples} baseline days`, className: "learning" };
+  if (Math.abs(signal.zScore) >= 2) return { label: "Far from usual", className: "unusual" };
+  if (Math.abs(signal.zScore) >= 1.25) return { label: "Outside usual range", className: "watch" };
+  return { label: "Within usual range", className: "usual" };
+}
+
+function renderInsights() {
+  const result = readinessForDate(state.health, state.checkins, state.date);
+  const saved = state.checkins.find((item) => item.date === state.date);
+  const form = $("#checkinForm");
+  form.elements.date.value = state.date;
+  form.elements.date.max = localDay();
+  for (const key of ["energy", "soreness", "mood", "recovery", "notes"]) form.elements[key].value = saved?.[key] ?? "";
+
+  if (result.prediction === null) {
+    const progress = Math.min(100, Math.round((result.rows / MIN_TRAINING_ROWS) * 100));
+    const reason = result.rows < MIN_TRAINING_ROWS
+      ? `${result.rows} of ${MIN_TRAINING_ROWS} usable check-ins collected`
+      : `Today's ${result.missing.join(", ")} baseline${result.missing.length === 1 ? " is" : "s are"} not ready`;
+    $("#readinessHero").innerHTML = `<div class="readiness-copy"><p class="eyebrow">Personal readiness model</p><h2>Learning your baseline</h2><p class="muted">${escapeHtml(reason)}. Forma waits for enough real examples before making a prediction.</p><div class="model-progress"><i style="--progress:${progress}%"></i><span>${progress}% of training minimum</span></div></div><div class="readiness-lock" aria-hidden="true">${result.rows}<small>/${MIN_TRAINING_ROWS}</small></div>`;
+  } else {
+    const strongest = result.contributions[0];
+    const explanation = strongest.effect >= 0 ? `${strongest.label} is lifting the estimate` : `${strongest.label} is lowering the estimate`;
+    $("#readinessHero").innerHTML = `<div class="readiness-copy"><p class="eyebrow">Predicted readiness</p><h2>${escapeHtml(explanation)}</h2><p class="muted">Based on ${result.rows} of your check-ins and today's measurements. This is an experiment, not medical guidance.</p><span class="confidence-pill">${result.confidence} model confidence</span></div><div class="readiness-score" style="--score:${result.score * 3.6}deg" role="img" aria-label="Predicted readiness ${result.score} out of 100"><strong>${result.score}</strong><small>/ 100</small></div>`;
+  }
+
+  const signals = unusualSignals(state.health, state.date);
+  $("#signalList").innerHTML = signals.length ? signals.map((signal) => {
+    const metric = METRICS.find((item) => item.key === signal.metric);
+    const status = signalStatus(signal);
+    const comparison = signal.zScore === null ? "Building a baseline" : `${number.format(Math.abs(signal.zScore))} standard deviations ${signal.zScore >= 0 ? "above" : "below"} usual`;
+    return `<article class="signal-row"><span class="signal-icon ${metric.tone}">${metric.icon}</span><span><strong>${metric.label}</strong><small>${comparison}</small></span><span class="signal-status ${status.className}">${status.label}</span></article>`;
+  }).join("") : `<div class="insight-empty"><strong>No measurements for this day</strong><p class="muted compact">Choose a date with imported Apple Health data.</p></div>`;
+
+  if (!result.ready) {
+    $("#modelDetails").innerHTML = `<p class="muted">The model needs ${MIN_TRAINING_ROWS} check-ins with matching HRV, resting heart rate, sleep, and at least seven earlier baseline days.</p><dl class="model-facts"><div><dt>Usable labels</dt><dd>${result.rows}</dd></div><div><dt>Saved check-ins</dt><dd>${state.checkins.length}</dd></div><div><dt>Method</dt><dd>Ridge regression</dd></div></dl>`;
+  } else {
+    const comparison = result.evaluation.mae < result.evaluation.baselineMae ? "Beating the simple average" : "Not yet beating the simple average";
+    const factors = result.contributions ? `<div class="factor-list">${result.contributions.map((item) => `<div><span>${item.label}</span><b class="${item.effect >= 0 ? "positive" : "negative"}">${item.effect >= 0 ? "+" : ""}${number.format(item.effect)}</b></div>`).join("")}</div>` : "";
+    $("#modelDetails").innerHTML = `<p class="muted">${comparison}. Error is measured on the newest ${result.evaluation.testDays} held-out days.</p><dl class="model-facts"><div><dt>Model error</dt><dd>${number.format(result.evaluation.mae)} points</dd></div><div><dt>Average-only error</dt><dd>${number.format(result.evaluation.baselineMae)} points</dd></div><div><dt>Training examples</dt><dd>${result.rows}</dd></div></dl>${factors}`;
+  }
+}
+
 function mealFoodHtml(food) {
   const calories = food.calories * food.servings;
   return `<button class="food-row" data-edit-food="${escapeHtml(food.id)}"><span class="food-dot"></span><span><strong>${escapeHtml(food.name)}</strong><small>${number.format(food.servings)} serving${food.servings === 1 ? "" : "s"}${food.notes ? ` · ${escapeHtml(food.notes)}` : ""}</small></span><b>${number.format(calories)} <small>kcal</small></b><span aria-hidden="true">›</span></button>`;
@@ -157,8 +203,22 @@ function renderSettings() {
 
 function render() {
   renderDate(); renderNutrition(); renderHealth(); renderMeals();
+  if (state.view === "insights") renderInsights();
   if (state.view === "trends") renderTrends();
   if (state.view === "settings") renderSettings();
+}
+
+async function saveCheckin(event) {
+  event.preventDefault();
+  try {
+    const checkin = validateCheckin(Object.fromEntries(new FormData(event.currentTarget)));
+    await storage.putCheckin(checkin);
+    state.checkins = await storage.checkins();
+    state.date = checkin.date;
+    $("#checkinError").textContent = "";
+    render();
+    toast("Check-in saved");
+  } catch (error) { $("#checkinError").textContent = error.message; }
 }
 
 function openFood(id = null, meal = "Lunch") {
@@ -246,10 +306,11 @@ function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => 
 function registerWebMcp() {
   const context = document.modelContext; if (!context?.registerTool) return;
   Promise.resolve(context.registerTool({ name: "add_food_entry", title: "Add food entry", description: "Add one reviewed manual food entry to the Forma diary and update the visible daily totals.", inputSchema: { type: "object", additionalProperties: false, required: ["date", "meal", "name", "calories", "protein", "carbs", "fat", "servings"], properties: { date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" }, meal: { type: "string", enum: MEALS }, name: { type: "string", minLength: 1, maxLength: 100 }, calories: { type: "number", minimum: 0, maximum: 10000 }, protein: { type: "number", minimum: 0, maximum: 10000 }, carbs: { type: "number", minimum: 0, maximum: 10000 }, fat: { type: "number", minimum: 0, maximum: 10000 }, servings: { type: "number", exclusiveMinimum: 0, maximum: 100 }, notes: { type: "string", maxLength: 500 } } }, annotations: { readOnlyHint: false, untrustedContentHint: false }, async execute(input) { const food = validateFood(input); await storage.putFood(food); state.foods = await storage.foods(); state.date = food.date; render(); return { id: food.id, date: food.date, calories: food.calories * food.servings }; } })).catch(() => {});
+  Promise.resolve(context.registerTool({ name: "save_daily_checkin", title: "Save daily check-in", description: "Save one reviewed 1-to-5 recovery check-in and update Forma's personal readiness model.", inputSchema: { type: "object", additionalProperties: false, required: ["date", "energy", "soreness", "mood", "recovery"], properties: { date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" }, energy: { type: "integer", minimum: 1, maximum: 5 }, soreness: { type: "integer", minimum: 1, maximum: 5 }, mood: { type: "integer", minimum: 1, maximum: 5 }, recovery: { type: "integer", minimum: 1, maximum: 5 }, notes: { type: "string", maxLength: 500 } } }, annotations: { readOnlyHint: false, untrustedContentHint: false }, async execute(input) { const checkin = validateCheckin(input); await storage.putCheckin(checkin); state.checkins = await storage.checkins(); state.date = checkin.date; render(); return { date: checkin.date, recovery: checkin.recovery, saved: true }; } })).catch(() => {});
 }
 
 async function loadState() {
-  try { [state.foods, state.health, state.targets, state.importMeta] = await Promise.all([storage.foods(), storage.health(), storage.targets(), storage.importMeta()]); render(); }
+  try { [state.foods, state.health, state.checkins, state.targets, state.importMeta] = await Promise.all([storage.foods(), storage.health(), storage.checkins(), storage.targets(), storage.importMeta()]); render(); }
   catch (error) { toast(`Local storage is unavailable: ${error.message}`, true); }
 }
 
@@ -263,4 +324,6 @@ $("#addFood").addEventListener("click", () => openFood()); $("#openImport").addE
 $("#healthFile").addEventListener("change", (event) => startHealthImport(event.target.files?.[0]));
 $("#cancelImport").addEventListener("click", () => { finishImport(); $("#importError").textContent = "Import cancelled. Your existing health data is unchanged."; });
 $("#restoreForm").addEventListener("submit", restoreBackup); $$('[data-close]').forEach((button) => button.addEventListener("click", () => $(`#${button.dataset.close}`).close()));
+$("#checkinForm").addEventListener("submit", saveCheckin);
+$("#checkinForm").elements.date.addEventListener("change", (event) => { if (event.target.value) { state.date = event.target.value; render(); } });
 registerWebMcp(); loadState();

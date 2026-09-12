@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
-import { totalsForDate, trendForMetric, validateBackup, validateFood } from "../dist/domain.js";
+import { totalsForDate, trendForMetric, validateBackup, validateCheckin, validateFood } from "../dist/domain.js";
 import { openHealthStream, parseHealthStream, parseHealthXml } from "../dist/import-worker.js";
+import { baselineForMetric, readinessForDate } from "../dist/insights.js";
 
 test("servings scale food totals exactly once", () => {
   const food = validateFood({ id: "a", date: "2026-09-11", meal: "Lunch", name: "Rice bowl", calories: 200, protein: 10, carbs: 30, fat: 5, servings: 1.5 });
@@ -13,6 +14,12 @@ test("servings scale food totals exactly once", () => {
 test("invalid food and backup data are rejected", () => {
   assert.throws(() => validateFood({ date: "2026-09-11", meal: "Lunch", name: "", calories: 100, protein: 1, carbs: 1, fat: 1, servings: 1 }));
   assert.throws(() => validateBackup({ schemaVersion: 99, foods: [], health: [], targets: {} }));
+});
+
+test("daily check-ins provide bounded labels for the personal model", () => {
+  const checkin = validateCheckin({ date: "2026-09-11", energy: 4, soreness: 2, mood: 5, recovery: 4, notes: "Easy run" });
+  assert.equal(checkin.recovery, 4);
+  assert.throws(() => validateCheckin({ ...checkin, recovery: 6 }));
 });
 
 test("Apple Health records become stable daily summaries", () => {
@@ -43,6 +50,35 @@ test("trend summaries compare equal current and previous periods", () => {
   assert.equal(trend.previousAverage, 40);
   assert.equal(trend.changePercent, 25);
   assert.equal(trend.latest.date, "2026-09-14");
+});
+
+test("personal baselines exclude the day being evaluated", () => {
+  const health = [];
+  for (let day = 1; day <= 7; day++) health.push({ date: `2026-09-0${day}`, metric: "hrv", value: day });
+  health.push({ date: "2026-09-08", metric: "hrv", value: 100 });
+  const baseline = baselineForMetric(health, "hrv", "2026-09-08");
+  assert.equal(baseline.samples, 7);
+  assert.equal(baseline.average, 4);
+  assert.ok(baseline.zScore > 40);
+});
+
+test("readiness model trains only after enough matched check-ins", () => {
+  const health = [];
+  const checkins = [];
+  const dayAt = (offset) => new Date(Date.UTC(2026, 0, 1 + offset)).toISOString().slice(0, 10);
+  for (let day = 0; day < 55; day++) {
+    const date = dayAt(day);
+    health.push({ date, metric: "hrv", value: 48 + (day % 7) });
+    health.push({ date, metric: "restingHeartRate", value: 62 - (day % 5) });
+    health.push({ date, metric: "sleep", value: 6.5 + (day % 6) * 0.3 });
+    if (day >= 28 && day < 52) checkins.push({ date, recovery: 1 + (day % 5) });
+  }
+  assert.equal(readinessForDate(health, checkins.slice(0, 8), dayAt(53)).ready, false);
+  const result = readinessForDate(health, checkins, dayAt(53));
+  assert.equal(result.ready, true);
+  assert.ok(result.rows >= 14);
+  assert.ok(result.score >= 0 && result.score <= 100);
+  assert.ok(Number.isFinite(result.evaluation.mae));
 });
 
 test("large XML path handles records split across stream chunks", async () => {

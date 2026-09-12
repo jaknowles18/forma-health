@@ -8,6 +8,7 @@ Forma is a private, device-local health dashboard and food diary. It runs as a s
 - Set calorie and macro targets in Settings.
 - In Apple Health on iPhone, tap your profile and choose **Export All Health Data**. Upload the resulting ZIP from Forma's Today screen. Extract and upload `export.xml` if the browser cannot decompress the ZIP.
 - Review 7, 30, or 90-day charts from the Trends screen.
+- Complete a daily 1-to-5 check-in from Insights to train the personal readiness model.
 - Download a Forma JSON backup from Settings before clearing browser data or changing devices.
 
 ## Apple Health import rules
@@ -20,7 +21,15 @@ V1 supports steps, sleep, resting heart rate, HRV, weight, respiratory rate, blo
 - Resting heart rate, HRV, weight, respiratory rate, blood oxygen, and VO₂ max use the latest record for the day.
 - A successful new import replaces earlier health summaries. Food records are untouched.
 
-The Trends screen shows the latest value, average, low, high, data coverage, and percentage change from the preceding equal-length period. It presents measurements directly; it does not calculate recovery or strain scores.
+The Trends screen shows the latest value, average, low, high, data coverage, and percentage change from the preceding equal-length period. It presents those measurements directly; the separate Insights screen contains the experimental personal prediction.
+
+## Experimental personal model
+
+The Insights screen compares each day with the preceding 28 days and highlights measurements outside the user's usual range. The current date is excluded from its own baseline to prevent data leakage.
+
+After 14 check-ins have matching HRV, resting heart rate, sleep, and at least seven earlier baseline measurements, Forma trains a small ridge-regression model in the browser. It predicts the user's 1-to-5 reported recovery, converts that estimate to a 0-to-100 display, and shows each feature's contribution. The newest 20% of usable days are held out chronologically to compare the model's mean absolute error with an average-only prediction.
+
+This model is educational and experimental. It runs locally, does not diagnose health conditions, and deliberately withholds predictions when its data requirements are not met.
 
 ZIP and XML content is read incrementally instead of loaded into memory as one giant string. Standard ZIP archives can be imported directly. If an exceptionally large archive uses ZIP64, extract and upload `export.xml`; direct XML also streams. The small ZIP directory is the only archive structure read into memory at once.
 
@@ -28,6 +37,7 @@ ZIP and XML content is read incrementally instead of loaded into memory as one g
 
 - `dist/app.js`: UI flows and screen state
 - `dist/domain.js`: validation, dates, and nutrition calculations
+- `dist/insights.js`: baseline features, anomaly detection, ridge regression, and evaluation
 - `dist/storage.js`: IndexedDB and backup/restore
 - `dist/import-worker.js`: ZIP/XML parsing and health aggregation
 

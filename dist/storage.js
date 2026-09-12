@@ -1,8 +1,8 @@
 import { DEFAULT_TARGETS, validateBackup } from "./domain.js";
 
 const DB_NAME = "forma-personal-v1";
-const DB_VERSION = 1;
-const STORES = ["foods", "health", "settings", "meta"];
+const DB_VERSION = 2;
+const STORES = ["foods", "health", "checkins", "settings", "meta"];
 
 function requestResult(request) {
   return new Promise((resolve, reject) => {
@@ -32,6 +32,9 @@ export function openDatabase() {
         const health = db.createObjectStore("health", { keyPath: "id" });
         health.createIndex("date", "date", { unique: false });
       }
+      // Version 2 adds one subjective label per day. These labels are kept in
+      // their own store so the ML model can evolve without changing health data.
+      if (!db.objectStoreNames.contains("checkins")) db.createObjectStore("checkins", { keyPath: "date" });
       if (!db.objectStoreNames.contains("settings")) db.createObjectStore("settings", { keyPath: "key" });
       if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "key" });
     };
@@ -48,6 +51,7 @@ async function all(storeName) {
 export const storage = {
   foods: () => all("foods"),
   health: () => all("health"),
+  checkins: () => all("checkins"),
   async targets() {
     const db = await openDatabase();
     const record = await requestResult(db.transaction("settings", "readonly").objectStore("settings").get("targets"));
@@ -70,6 +74,12 @@ export const storage = {
     tx.objectStore("foods").delete(id);
     await transactionDone(tx);
   },
+  async putCheckin(checkin) {
+    const db = await openDatabase();
+    const tx = db.transaction("checkins", "readwrite");
+    tx.objectStore("checkins").put(checkin);
+    await transactionDone(tx);
+  },
   async saveTargets(targets) {
     const db = await openDatabase();
     const tx = db.transaction("settings", "readwrite");
@@ -86,8 +96,8 @@ export const storage = {
     await transactionDone(tx);
   },
   async backup() {
-    const [foods, health, targets, importMeta] = await Promise.all([this.foods(), this.health(), this.targets(), this.importMeta()]);
-    return { schemaVersion: 1, exportedAt: new Date().toISOString(), foods, health, targets, importMeta };
+    const [foods, health, checkins, targets, importMeta] = await Promise.all([this.foods(), this.health(), this.checkins(), this.targets(), this.importMeta()]);
+    return { schemaVersion: 2, exportedAt: new Date().toISOString(), foods, health, checkins, targets, importMeta };
   },
   async restore(input) {
     const data = validateBackup(input);
@@ -96,6 +106,7 @@ export const storage = {
     STORES.forEach((name) => tx.objectStore(name).clear());
     data.foods.forEach((item) => tx.objectStore("foods").put(item));
     data.health.forEach((item) => tx.objectStore("health").put(item));
+    data.checkins.forEach((item) => tx.objectStore("checkins").put(item));
     tx.objectStore("settings").put({ key: "targets", value: data.targets });
     if (data.importMeta) tx.objectStore("meta").put({ key: "lastHealthImport", value: data.importMeta });
     await transactionDone(tx);

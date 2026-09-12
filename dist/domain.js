@@ -51,8 +51,26 @@ export function validateTargets(input) {
   return result;
 }
 
+export function validateCheckin(input) {
+  const checkin = {
+    date: String(input.date || ""),
+    energy: Number(input.energy),
+    soreness: Number(input.soreness),
+    mood: Number(input.mood),
+    recovery: Number(input.recovery),
+    notes: String(input.notes || "").trim(),
+    updatedAt: String(input.updatedAt || new Date().toISOString()),
+  };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkin.date)) throw new Error("Choose a valid check-in date.");
+  for (const key of ["energy", "soreness", "mood", "recovery"]) {
+    if (!Number.isInteger(checkin[key]) || checkin[key] < 1 || checkin[key] > 5) throw new Error(`Choose a ${key} rating from 1 to 5.`);
+  }
+  if (checkin.notes.length > 500) throw new Error("Keep check-in notes under 500 characters.");
+  return checkin;
+}
+
 export function validateBackup(data) {
-  if (!data || data.schemaVersion !== 1 || !Array.isArray(data.foods) || !Array.isArray(data.health) || !data.targets) {
+  if (!data || ![1, 2].includes(data.schemaVersion) || !Array.isArray(data.foods) || !Array.isArray(data.health) || !data.targets) {
     throw new Error("This is not a valid Forma backup.");
   }
   const foods = data.foods.map(validateFood);
@@ -65,7 +83,8 @@ export function validateBackup(data) {
     if (!Number.isFinite(value) || value < 0) throw new Error("The backup contains an invalid health value.");
     return { ...item, id: `${item.date}:${item.metric}`, value };
   });
-  return { schemaVersion: 1, exportedAt: String(data.exportedAt || ""), foods, health, targets, importMeta: data.importMeta || null };
+  const checkins = (data.checkins || []).map(validateCheckin);
+  return { schemaVersion: 2, exportedAt: String(data.exportedAt || ""), foods, health, checkins, targets, importMeta: data.importMeta || null };
 }
 
 function shiftDay(day, offset) {

@@ -14,6 +14,7 @@
         <a class="brand" href="#today" aria-label="Forma home"><span class="brand-mark">F</span><span>Forma</span></a>
         <nav class="desktop-nav" aria-label="Primary">
           <button class="nav-link active" data-view="today">Today</button>
+          <button class="nav-link" data-view="insights">Insights</button>
           <button class="nav-link" data-view="trends">Trends</button>
           <button class="nav-link" data-view="food">Food</button>
           <button class="nav-link" data-view="settings">Settings</button>
@@ -52,6 +53,30 @@
             <button class="primary-button" id="quickAdd">＋ Add food</button>
           </section>
         </section>
+        <section class="view" id="insightsView" aria-labelledby="insightsTitle">
+          <div class="page-head">
+            <div><p class="eyebrow" id="insightsDate">Personal model</p><h1 id="insightsTitle">Insights</h1></div>
+            <span class="experiment-badge">Experimental</span>
+          </div>
+          <section class="readiness-card" id="readinessHero" aria-live="polite"></section>
+          <div class="insight-layout">
+            <form class="insight-panel form-stack" id="checkinForm">
+              <div><p class="eyebrow">Teach your model</p><h2>Daily check-in</h2><p class="muted compact">Overall recovery becomes the label the model learns to predict. The other answers preserve useful context.</p></div>
+              <label>Date<input name="date" type="date" required /></label>
+              <div class="field-grid two checkin-fields">
+                <label>Energy<select name="energy" required><option value="">Choose</option><option value="1">1 · Very low</option><option value="2">2 · Low</option><option value="3">3 · Normal</option><option value="4">4 · Good</option><option value="5">5 · Excellent</option></select></label>
+                <label>Soreness<select name="soreness" required><option value="">Choose</option><option value="1">1 · Fresh</option><option value="2">2 · Mild</option><option value="3">3 · Moderate</option><option value="4">4 · Sore</option><option value="5">5 · Very sore</option></select></label>
+                <label>Mood<select name="mood" required><option value="">Choose</option><option value="1">1 · Very low</option><option value="2">2 · Low</option><option value="3">3 · Neutral</option><option value="4">4 · Good</option><option value="5">5 · Excellent</option></select></label>
+                <label>Overall recovery<select name="recovery" required><option value="">Choose</option><option value="1">1 · Very poor</option><option value="2">2 · Poor</option><option value="3">3 · Average</option><option value="4">4 · Good</option><option value="5">5 · Excellent</option></select></label>
+              </div>
+              <label>Notes <span class="optional">Optional</span><textarea name="notes" maxlength="500" rows="2" placeholder="Training, illness, stress, or anything unusual"></textarea></label>
+              <p class="form-error" id="checkinError" role="alert"></p>
+              <button class="primary-button" type="submit">Save check-in</button>
+            </form>
+            <section class="insight-panel" aria-labelledby="signalsTitle"><div><p class="eyebrow">28-day baseline</p><h2 id="signalsTitle">Your signals</h2></div><div class="signal-list" id="signalList"></div></section>
+            <section class="insight-panel" aria-labelledby="modelTitle"><div><p class="eyebrow">Model report</p><h2 id="modelTitle">How it is learning</h2></div><div id="modelDetails"></div></section>
+          </div>
+        </section>
         <section class="view" id="trendsView" aria-labelledby="trendsTitle">
           <div class="page-head trends-head">
             <div><p class="eyebrow">Health history</p><h1 id="trendsTitle">Trends</h1></div>
@@ -68,6 +93,7 @@
 
       <nav class="mobile-nav" aria-label="Primary">
         <button class="mobile-nav-link active" data-view="today"><span>◫</span>Today</button>
+        <button class="mobile-nav-link" data-view="insights"><span>✦</span>Insights</button>
         <button class="mobile-nav-link" data-view="trends"><span>⌁</span>Trends</button>
         <button class="mobile-nav-link" data-view="food"><span>⌁</span>Food</button>
         <button class="mobile-nav-link" data-view="settings"><span>⚙</span>Settings</button>
