@@ -1,6 +1,34 @@
-# Forma v1
+# Forma
 
-Forma is a private, device-local health dashboard and food diary. It runs as a static web app and stores data in IndexedDB in the current browser.
+Forma is a private, device-local health dashboard, food diary, and personal readiness experiment. It imports Apple Health data without uploading the raw export, displays trends, and trains a small model from daily recovery check-ins.
+
+[Open the private hosted app](https://forma-health-jk.jaknowles18.chatgpt.site)
+
+## Features
+
+- Streaming Apple Health ZIP/XML import that works with large exports
+- Daily summaries for 11 activity, sleep, cardio, respiratory, fitness, and body metrics
+- 7, 30, and 90-day charts with equal-period comparisons
+- Manual food and macro tracking with editable targets
+- 28-day personal baselines and unusual-signal detection
+- Local ridge-regression readiness model with chronological evaluation
+- IndexedDB persistence and validated JSON backup/restore
+- Responsive phone and desktop layouts
+
+All application data stays in the current browser. The hosted app is private, so the link works only for its owner.
+
+## Run locally
+
+Requirements: a modern browser, Node.js 20 or newer for the checks, and Python 3 for the example static server.
+
+```bash
+git clone git@github.com:jaknowles18/forma-health.git
+cd forma-health
+npm run check
+python3 -m http.server 4173 --directory dist
+```
+
+Open `http://localhost:4173`. The app has no package dependencies or build step.
 
 ## Use
 
@@ -33,14 +61,25 @@ This model is educational and experimental. It runs locally, does not diagnose h
 
 ZIP and XML content is read incrementally instead of loaded into memory as one giant string. Standard ZIP archives can be imported directly. If an exceptionally large archive uses ZIP64, extract and upload `export.xml`; direct XML also streams. The small ZIP directory is the only archive structure read into memory at once.
 
-## Structure
+## Project structure
 
 - `dist/app.js`: UI flows and screen state
 - `dist/domain.js`: validation, dates, and nutrition calculations
 - `dist/insights.js`: baseline features, anomaly detection, ridge regression, and evaluation
 - `dist/storage.js`: IndexedDB and backup/restore
 - `dist/import-worker.js`: ZIP/XML parsing and health aggregation
+- `tests/domain.test.js`: focused domain, import, baseline, and model checks
+- `docs/ARCHITECTURE.md`: data flow, ML design, storage, and extension notes
 
 There is no backend, account system, photo AI, or automatic Apple Health sync in v1.
 
-Run `npm test` for focused calculation and import checks. Serve `dist/` from any static HTTP server for local development.
+Run `npm test` for focused calculation and import checks, or `npm run check` for the complete JavaScript syntax and test pass.
+
+## Privacy and limitations
+
+- Do not commit Apple Health exports or Forma backup files. The included `.gitignore` excludes their common names.
+- Browser storage is specific to one browser and device. Download backups before clearing site data.
+- The readiness model is educational and experimental. It is not medical guidance and intentionally produces no score until its data requirements are met.
+- A normal web app cannot read HealthKit or connect directly to an Apple Watch. Fresh data requires another manual export and import.
+
+See [the architecture notes](docs/ARCHITECTURE.md) for the module boundaries, ML pipeline, tradeoffs, and future extension points.

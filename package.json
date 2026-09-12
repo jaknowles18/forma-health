@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check": "node --check dist/app.js && node --check dist/domain.js && node --check dist/import-worker.js && node --check dist/insights.js && node --check dist/storage.js && npm test",
     "test": "node --test tests/*.test.js"
   }
 }

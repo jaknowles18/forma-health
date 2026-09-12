@@ -1,0 +1,16 @@
+.DS_Store
+node_modules/
+coverage/
+*.log
+*.tar.gz
+
+# Apple Health exports and Forma backups contain personal data.
+export.zip
+export.xml
+apple_health_export/
+forma-backup-*.json
+
+# Local secrets if a server integration is added later.
+.env
+.env.*
+!.env.example
