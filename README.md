@@ -32,7 +32,7 @@ Open the local URL printed by Vercel. A plain static server can display the dash
 
 ## Deploy to Vercel
 
-Import `jaknowles18/forma-health` as a new Vercel project and deploy it. The checked-in `vercel.json` selects `dist` as the static output and packages `api/readiness.py` as a Python Function. No build command or environment variable is required for the current model.
+Import `jaknowles18/forma-health` as a new Vercel project and deploy it. The checked-in `vercel.json` selects `dist` as the static output, and Vercel automatically detects `api/readiness.py` as a Python Function. No build command or environment variable is required for the current model.
 
 ## Use
 
