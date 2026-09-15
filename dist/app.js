@@ -1,11 +1,18 @@
 import { DEFAULT_TARGETS, MEALS, localDay, totalsForDate, trendForMetric, validateCheckin, validateFood, validateTargets, validateBackup } from "./domain.js";
+import { createDemoData, isDemoMode } from "./demo-data.js";
 import { fetchReadinessInsights, MIN_TRAINING_ROWS } from "./insights.js";
 import { storage } from "./storage.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
-const state = { date: localDay(), view: "today", trendMetric: "hrv", trendRange: 30, foods: [], health: [], checkins: [], targets: { ...DEFAULT_TARGETS }, importMeta: null, restoreData: null, worker: null, insightsRequest: { key: "", status: "idle", data: null, error: "" } };
+const state = { date: localDay(), view: "today", trendMetric: "hrv", trendRange: 30, demo: isDemoMode(), foods: [], health: [], checkins: [], targets: { ...DEFAULT_TARGETS }, importMeta: null, restoreData: null, worker: null, insightsRequest: { key: "", status: "idle", data: null, error: "" } };
+
+function requirePersonalMode() {
+  if (!state.demo) return true;
+  toast("Exit the demo to add your own data.");
+  return false;
+}
 
 function showView(view) {
   state.view = view;
@@ -245,6 +252,7 @@ function render() {
 
 async function saveCheckin(event) {
   event.preventDefault();
+  if (!requirePersonalMode()) return;
   try {
     const checkin = validateCheckin(Object.fromEntries(new FormData(event.currentTarget)));
     await storage.putCheckin(checkin);
@@ -257,6 +265,7 @@ async function saveCheckin(event) {
 }
 
 function openFood(id = null, meal = "Lunch") {
+  if (!requirePersonalMode()) return;
   const form = $("#foodForm");
   form.reset(); $("#foodError").textContent = "";
   const food = id ? state.foods.find((item) => item.id === id) : null;
@@ -280,12 +289,14 @@ async function saveFood(event) {
 }
 
 async function deleteFood() {
+  if (!requirePersonalMode()) return;
   const id = $("#foodForm").elements.id.value;
   if (!id || !window.confirm("Delete this food entry?")) return;
   await storage.deleteFood(id); state.foods = await storage.foods(); $("#foodDialog").close(); render(); toast("Food deleted");
 }
 
 function openImport() {
+  if (!requirePersonalMode()) return;
   $("#healthFile").value = ""; $("#importError").textContent = ""; $("#importProgress").classList.add("hidden"); $("#importResult").classList.add("hidden"); $("#importDialog").showModal();
 }
 
@@ -314,16 +325,19 @@ function finishImport() { state.worker?.terminate(); state.worker = null; $("#he
 
 async function saveTargets(event) {
   event.preventDefault();
+  if (!requirePersonalMode()) return;
   try { const targets = validateTargets(Object.fromEntries(new FormData(event.currentTarget))); await storage.saveTargets(targets); state.targets = targets; render(); toast("Targets saved"); }
   catch (error) { $("#targetsError").textContent = error.message; }
 }
 
 async function downloadBackup() {
+  if (!requirePersonalMode()) return;
   const backup = await storage.backup(); const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob);
   Object.assign(document.createElement("a"), { href: url, download: `forma-backup-${localDay()}.json` }).click(); setTimeout(() => URL.revokeObjectURL(url), 1000); toast("Backup downloaded");
 }
 
 async function prepareRestore(event) {
+  if (!requirePersonalMode()) return;
   const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
   try { if (file.size > 50 * 1024 * 1024) throw new Error("This backup is larger than 50 MB."); state.restoreData = validateBackup(JSON.parse(await file.text())); $("#restoreError").textContent = ""; $("#restoreDialog").showModal(); }
   catch (error) { toast(error.message, true); }
@@ -339,12 +353,19 @@ function toast(message, error = false) { const el = $("#toast"); el.textContent 
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]); }
 
 function registerWebMcp() {
+  if (state.demo) return;
   const context = document.modelContext; if (!context?.registerTool) return;
   Promise.resolve(context.registerTool({ name: "add_food_entry", title: "Add food entry", description: "Add one reviewed manual food entry to the Forma diary and update the visible daily totals.", inputSchema: { type: "object", additionalProperties: false, required: ["date", "meal", "name", "calories", "protein", "carbs", "fat", "servings"], properties: { date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" }, meal: { type: "string", enum: MEALS }, name: { type: "string", minLength: 1, maxLength: 100 }, calories: { type: "number", minimum: 0, maximum: 10000 }, protein: { type: "number", minimum: 0, maximum: 10000 }, carbs: { type: "number", minimum: 0, maximum: 10000 }, fat: { type: "number", minimum: 0, maximum: 10000 }, servings: { type: "number", exclusiveMinimum: 0, maximum: 100 }, notes: { type: "string", maxLength: 500 } } }, annotations: { readOnlyHint: false, untrustedContentHint: false }, async execute(input) { const food = validateFood(input); await storage.putFood(food); state.foods = await storage.foods(); state.date = food.date; render(); return { id: food.id, date: food.date, calories: food.calories * food.servings }; } })).catch(() => {});
   Promise.resolve(context.registerTool({ name: "save_daily_checkin", title: "Save daily check-in", description: "Save one reviewed 1-to-5 recovery check-in and update Forma's personal readiness model.", inputSchema: { type: "object", additionalProperties: false, required: ["date", "energy", "soreness", "mood", "recovery"], properties: { date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" }, energy: { type: "integer", minimum: 1, maximum: 5 }, soreness: { type: "integer", minimum: 1, maximum: 5 }, mood: { type: "integer", minimum: 1, maximum: 5 }, recovery: { type: "integer", minimum: 1, maximum: 5 }, notes: { type: "string", maxLength: 500 } } }, annotations: { readOnlyHint: false, untrustedContentHint: false }, async execute(input) { const checkin = validateCheckin(input); await storage.putCheckin(checkin); state.checkins = await storage.checkins(); state.date = checkin.date; render(); return { date: checkin.date, recovery: checkin.recovery, saved: true }; } })).catch(() => {});
 }
 
 async function loadState() {
+  if (state.demo) {
+    Object.assign(state, createDemoData(state.date));
+    $("#demoBanner").classList.remove("hidden");
+    render();
+    return;
+  }
   try { [state.foods, state.health, state.checkins, state.targets, state.importMeta] = await Promise.all([storage.foods(), storage.health(), storage.checkins(), storage.targets(), storage.importMeta()]); render(); }
   catch (error) { toast(`Local storage is unavailable: ${error.message}`, true); }
 }

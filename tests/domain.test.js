@@ -3,6 +3,18 @@ import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
 import { totalsForDate, trendForMetric, validateBackup, validateCheckin, validateFood } from "../dist/domain.js";
 import { openHealthStream, parseHealthStream, parseHealthXml } from "../dist/import-worker.js";
+import { createDemoData, isDemoMode } from "../dist/demo-data.js";
+
+test("portfolio demo stays current, complete, and opt-in", () => {
+  const demo = createDemoData("2026-09-14");
+  assert.equal(isDemoMode("?demo=1"), true);
+  assert.equal(isDemoMode(""), false);
+  assert.equal(demo.health.length, 120 * 11);
+  assert.equal(demo.health.filter((item) => item.date === "2026-09-14").length, 11);
+  assert.equal(demo.checkins.length, 70);
+  assert.equal(demo.foods.length, 4);
+  assert.equal(totalsForDate(demo.foods, "2026-09-14").calories, 2145);
+});
 
 test("servings scale food totals exactly once", () => {
   const food = validateFood({ id: "a", date: "2026-09-11", meal: "Lunch", name: "Rice bowl", calories: 200, protein: 10, carbs: 30, fat: 5, servings: 1.5 });

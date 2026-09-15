@@ -21,6 +21,7 @@ The raw Health export is never stored or sent to the backend. A successful impor
 | Module | Responsibility |
 | --- | --- |
 | `dist/app.js` | Screen state, rendering, forms, and user interactions |
+| `dist/demo-data.js` | Deterministic, in-memory portfolio data selected by `?demo=1` |
 | `dist/domain.js` | Input validation, nutrition totals, dates, and trend calculations |
 | `dist/import-worker.js` | Streaming ZIP/XML parsing and daily Apple Health aggregation |
 | `dist/storage.js` | IndexedDB access and versioned backup/restore |
@@ -31,6 +32,10 @@ The raw Health export is never stored or sent to the backend. A successful impor
 | `backend/readiness.py` | Training, chronological evaluation, and prediction explanations |
 
 The boundaries keep storage, import parsing, Python ML calculations, HTTP transport, and interface code separate without adding an application framework.
+
+## Portfolio demo
+
+Demo mode generates 120 rolling days of health history and 70 matching recovery labels in the browser. It uses the same domain, chart, API-client, and Python-model paths as personal data; only its data source changes. Write operations are disabled and the storage module is bypassed, which prevents sample records from mixing with a visitor's IndexedDB data. The generated signals intentionally contain a learnable relationship so the readiness screen demonstrates model training rather than a hard-coded result.
 
 ## Personal model
 

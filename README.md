@@ -1,93 +1,120 @@
+<div align="center">
+
 # Forma
 
-Forma is a local-first health dashboard, food diary, and personal readiness experiment. It imports Apple Health data without uploading the raw export, displays trends, and calls a small Python model trained from daily recovery check-ins.
+### Your Apple Health data, turned into a daily story.
 
-[Open the private hosted app](https://forma-health-jk.jaknowles18.chatgpt.site)
+A local-first health dashboard with Apple Health import, macro tracking, trends, and an explainable personal readiness model written in Python.
 
-## Features
+[![JavaScript](https://img.shields.io/badge/JavaScript-ES_Modules-F7DF1E?logo=javascript&logoColor=111)](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules)
+[![Python](https://img.shields.io/badge/Python-Readiness_Model-3776AB?logo=python&logoColor=white)](backend/readiness.py)
+[![Vercel](https://img.shields.io/badge/Deployed_on-Vercel-000?logo=vercel)](https://forma-health-git-main-jimmywastaken.vercel.app/?demo=1)
+[![Tests](https://img.shields.io/badge/tests-12_passing-c9ff62)](#run-it-locally)
 
-- Streaming Apple Health ZIP/XML import that works with large exports
-- Daily summaries for 11 activity, sleep, cardio, respiratory, fitness, and body metrics
-- 7, 30, and 90-day charts with equal-period comparisons
-- Manual food and macro tracking with editable targets
-- 28-day personal baselines and unusual-signal detection
-- Python ridge-regression readiness model with chronological evaluation
-- IndexedDB persistence and validated JSON backup/restore
-- Responsive phone and desktop layouts
+**[Explore the generated demo →](https://forma-health-git-main-jimmywastaken.vercel.app/?demo=1)**
 
-Food entries, imported health records, check-ins, and backups remain in the current browser. When Insights opens, the browser sends only the compact daily HRV, resting-heart-rate, sleep, respiratory-rate, and recovery-label values needed for that calculation to the stateless Python function.
+</div>
 
-## Run locally
+![Forma dashboard showing generated Apple Watch signals and nutrition data](docs/screenshots/forma-demo.png)
 
-Requirements: a modern browser, Node.js 20 or newer, Python 3.12 or newer, and the Vercel CLI for the complete local application.
+## Why I built it
+
+Health apps often hide how they calculate recovery scores, while Apple Health exports are too large and awkward to explore by hand. Forma turns that export into a useful dashboard and keeps the model small enough to read, test, and understand.
+
+The portfolio demo generates 120 days of realistic data from the current date. Add `?demo=1` to the URL to explore every screen with populated charts, meals, and a trained readiness score. Demo data stays in memory and cannot overwrite personal browser data.
+
+## What it does
+
+- **Apple Health import** — streams large ZIP or XML exports through a Web Worker and summarizes 11 health metrics.
+- **Nutrition tracking** — logs meals, servings, calories, protein, carbs, and fat against editable daily targets.
+- **Health trends** — compares 7, 30, or 90-day periods with coverage, averages, ranges, and responsive charts.
+- **Personal readiness** — trains ridge regression on daily check-ins and explains which signals moved the prediction.
+- **Local-first storage** — keeps food, summaries, targets, and check-ins in IndexedDB with validated JSON backup and restore.
+- **Responsive interface** — works as a phone-sized daily companion or a desktop dashboard.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    A[Apple Health ZIP] -->|stream locally| B[Web Worker]
+    B --> C[Daily summaries]
+    D[Meals + check-ins] --> E[(IndexedDB)]
+    C --> E
+    E --> F[Dashboard + trends]
+    E -->|compact signals only| G[Python API]
+    G --> H[Readiness + explanations]
+```
+
+The raw Apple Health export never leaves the browser. Only compact daily HRV, resting heart rate, sleep, respiratory rate, and recovery labels are sent to the stateless Python function when Insights is opened.
+
+## The ML, without a black box
+
+Forma builds a personal baseline from the **previous** 28 days, converts current signals to z-scores, and trains ridge regression to predict the user's 1-to-5 recovery check-in. It excludes the current day from its own baseline and holds out the newest 20% of training days for chronological evaluation.
+
+The model waits for 14 usable check-ins, reports its error beside an average-only baseline, and returns each feature's contribution. The implementation uses plain Python and a commented matrix solver rather than an ML framework, making the full learning pipeline inspectable.
+
+> The readiness score is an educational experiment, not medical advice or a diagnostic tool.
+
+## Run it locally
+
+You need Node.js 20+, Python 3.12+, and the [Vercel CLI](https://vercel.com/docs/cli).
 
 ```bash
-git clone git@github.com:jaknowles18/forma-health.git
+git clone https://github.com/jaknowles18/forma-health.git
 cd forma-health
 npm run check
 vercel dev
 ```
 
-Open the local URL printed by Vercel. A plain static server can display the dashboard, but the Insights screen needs the Python API provided by `vercel dev`.
+Open the URL printed by Vercel. Use `/?demo=1` for the generated portfolio dataset. A basic static server can render the dashboard, but Insights needs the Python function provided by `vercel dev`.
 
-## Deploy to Vercel
+## Import your own health data
 
-Import `jaknowles18/forma-health` as a new Vercel project and deploy it. The checked-in `vercel.json` selects `dist` as the static output, and Vercel automatically detects `api/readiness.py` as a Python Function. No build command or environment variable is required for the current model.
+1. On iPhone, open **Health → profile picture → Export All Health Data**.
+2. In Forma, choose **Import data** and select the resulting ZIP.
+3. If a very large ZIP uses ZIP64, extract it and select `apple_health_export/export.xml` instead.
+4. Download a JSON backup from Settings before clearing browser data or changing devices.
 
-## Use
+Supported signals are steps, sleep, resting heart rate, HRV, weight, respiratory rate, blood oxygen, active energy, exercise time, walking/running distance, and VO₂ max.
 
-- Add, edit, or delete foods from the Food screen. Nutrition is entered per serving.
-- Set calorie and macro targets in Settings.
-- In Apple Health on iPhone, tap your profile and choose **Export All Health Data**. Upload the resulting ZIP from Forma's Today screen. Extract and upload `export.xml` if the browser cannot decompress the ZIP.
-- Review 7, 30, or 90-day charts from the Trends screen.
-- Complete a daily 1-to-5 check-in from Insights to train the personal readiness model.
-- Download a Forma JSON backup from Settings before clearing browser data or changing devices.
+## Engineering decisions
 
-## Apple Health import rules
+| Decision | Why | Tradeoff |
+|---|---|---|
+| Browser-only persistence | Simple, private v1 with no account or database | Data does not automatically follow the user across devices |
+| Streaming import in a Web Worker | Large exports do not freeze the main interface | ZIP64 archives need the extracted XML fallback |
+| Daily summaries instead of raw samples | Makes charts fast and greatly reduces storage | Fine-grained workout and intraday analysis is unavailable |
+| Plain Python ridge regression | Easy to learn, audit, and deploy as one function | Less flexible than a production ML pipeline |
+| Generated `?demo=1` dataset | The demo stays current and never ships personal health data | It represents realistic patterns rather than a real person |
 
-V1 supports steps, sleep, resting heart rate, HRV, weight, respiratory rate, blood oxygen, active energy, exercise time, walking/running distance, and VO₂ max. Raw Apple export records are streamed through a Web Worker and are not uploaded or retained. The app saves daily summaries only.
+These boundaries leave clear extension points for authentication, cloud sync, HealthKit ingestion through an iOS companion, richer nutrition data, and more advanced models without requiring them in v1.
 
-- Steps use the highest source total for each day to avoid adding overlapping Watch and iPhone totals. This may undercount when different sources cover different parts of a day.
-- Overlapping asleep intervals are merged. In-bed and awake records are excluded.
-- Active energy, exercise time, and walking/running distance follow the same highest-source-total rule as steps.
-- Resting heart rate, HRV, weight, respiratory rate, blood oxygen, and VO₂ max use the latest record for the day.
-- A successful new import replaces earlier health summaries. Food records are untouched.
+## Project map
 
-The Trends screen shows the latest value, average, low, high, data coverage, and percentage change from the preceding equal-length period. It presents those measurements directly; the separate Insights screen contains the experimental personal prediction.
+```text
+dist/
+  app.js             UI state and screen flows
+  demo-data.js       Deterministic, read-only portfolio dataset
+  domain.js          Validation, dates, nutrition, and trends
+  import-worker.js   Streaming Apple Health ZIP/XML parser
+  insights.js        Compact client for the Python function
+  storage.js         IndexedDB and backup/restore
+api/readiness.py     Vercel Python Function
+backend/
+  features.py        Leakage-safe personal baselines
+  ridge.py           Commented ridge-regression solver
+  readiness.py       Training, evaluation, and explanations
+tests/               JavaScript and Python checks
+```
 
-## Experimental personal model
+Read [the architecture notes](docs/ARCHITECTURE.md) for the data flow, storage model, ML pipeline, limitations, and future extension points.
 
-The Insights screen compares each day with the preceding 28 days and highlights measurements outside the user's usual range. The current date is excluded from its own baseline to prevent data leakage.
+## Deploy
 
-After 14 check-ins have matching HRV, resting heart rate, sleep, and at least seven earlier baseline measurements, the Python function trains a small ridge-regression model. It predicts the user's 1-to-5 reported recovery, converts that estimate to a 0-to-100 display, and returns each feature's contribution. The newest 20% of usable days are held out chronologically to compare the model's mean absolute error with an average-only prediction.
+Import this repository into Vercel. `vercel.json` serves `dist` and Vercel detects `api/readiness.py` as a Python Function. The current version needs no build command, database, API key, or environment variable.
 
-This model is educational and experimental. Its Python code exposes the baseline, matrix solving, regularization, evaluation, and explanation steps. It does not diagnose health conditions and deliberately withholds predictions when its data requirements are not met.
+---
 
-ZIP and XML content is read incrementally instead of loaded into memory as one giant string. Standard ZIP archives can be imported directly. If an exceptionally large archive uses ZIP64, extract and upload `export.xml`; direct XML also streams. The small ZIP directory is the only archive structure read into memory at once.
-
-## Project structure
-
-- `dist/app.js`: UI flows and screen state
-- `dist/domain.js`: validation, dates, and nutrition calculations
-- `dist/insights.js`: compact API client for the Python model
-- `dist/storage.js`: IndexedDB and backup/restore
-- `dist/import-worker.js`: ZIP/XML parsing and health aggregation
-- `api/readiness.py`: Vercel Python Function and request validation
-- `backend/features.py`: leakage-safe 28-day baselines and feature rows
-- `backend/ridge.py`: commented ridge-regression matrix calculation
-- `backend/readiness.py`: training, chronological evaluation, and explanations
-- `tests/`: focused JavaScript and Python checks
-- `docs/ARCHITECTURE.md`: data flow, ML design, storage, and extension notes
-
-There is no backend database, account system, photo AI, or automatic Apple Health sync in v1. The Python function is stateless and retrains from the compact values supplied with each request.
-
-Run `npm test` for focused calculation and import checks, or `npm run check` for the complete JavaScript syntax and test pass.
-
-## Privacy and limitations
-
-- Do not commit Apple Health exports or Forma backup files. The included `.gitignore` excludes their common names.
-- Browser storage is specific to one browser and device. Download backups before clearing site data.
-- The readiness model is educational and experimental. Its compact input is processed by the deployed Python function, it is not medical guidance, and it intentionally produces no score until its data requirements are met.
-- A normal web app cannot read HealthKit or connect directly to an Apple Watch. Fresh data requires another manual export and import.
-
-See [the architecture notes](docs/ARCHITECTURE.md) for the module boundaries, ML pipeline, tradeoffs, and future extension points.
+<div align="center">
+Built as a focused exploration of local-first product design, health-data processing, and understandable machine learning.
+</div>
